@@ -242,10 +242,18 @@ Do not commit `.office-vcs/` to Git. It is ignored by `.gitignore`.
 │   ├── core/
 │   ├── office/
 │   └── storage/
+├── electron/
+│   ├── main.ts
+│   └── preload.ts
+├── renderer/
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
 ├── test/
 ├── package.json
 ├── package-lock.json
 ├── tsconfig.json
+├── tsconfig.electron.json
 └── README.md
 ```
 
@@ -255,6 +263,8 @@ Do not commit `.office-vcs/` to Git. It is ignored by `.gitignore`.
 - `src/office/` detects Office files, extracts text, and creates diffs
 - `src/storage/` reads and writes local repository data
 - `src/watcher.ts` implements file watching
+- `electron/` contains the desktop app main process and preload bridge
+- `renderer/` contains the desktop app HTML, CSS, and browser-side JavaScript
 - `test/` contains automated verification for the core behavior
 
 ## Development
@@ -264,6 +274,12 @@ Run the CLI directly from TypeScript:
 ```bash
 npm run dev -- --help
 npm run dev -- init
+```
+
+Run the desktop GUI in development:
+
+```bash
+npm run gui
 ```
 
 Run tests:
@@ -276,6 +292,12 @@ Build JavaScript output:
 
 ```bash
 npm run build
+```
+
+Build both CLI and desktop app TypeScript output:
+
+```bash
+npm run build:all
 ```
 
 Check production dependencies:
@@ -305,17 +327,61 @@ npm install -g ./ovc-1.0.0.tgz
 ovc --help
 ```
 
+## Desktop App
+
+OVC also includes a simple Electron desktop application. The GUI reuses the same
+core version-management code as the CLI.
+
+Current GUI features:
+
+- choose a workspace folder
+- initialize `.office-vcs`
+- select Office files
+- stage files
+- commit staged files
+- view status
+- view version history
+- show latest diff for a file
+- checkout a version to a chosen output path
+
+Run it locally:
+
+```bash
+npm run gui
+```
+
+Create a desktop build for the current platform:
+
+```bash
+npm run dist:gui
+```
+
+Create a Windows installer:
+
+```bash
+npm run dist:win
+```
+
+The packaged desktop app is written to:
+
+```text
+release/
+```
+
 ## What To Commit To GitHub
 
 Commit source, tests, config, and documentation:
 
 ```text
 src/
+electron/
+renderer/
 test/
 README.md
 package.json
 package-lock.json
 tsconfig.json
+tsconfig.electron.json
 .gitignore
 ```
 
@@ -324,6 +390,8 @@ Do not commit generated or local runtime files:
 ```text
 node_modules/
 dist/
+dist-electron/
+release/
 .office-vcs/
 *.tgz
 coverage/

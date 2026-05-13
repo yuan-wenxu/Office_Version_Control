@@ -14,20 +14,51 @@
   ],
   "scripts": {
     "dev": "tsx src/index.ts",
+    "gui": "npm run build:electron && electron dist-electron/electron/main.js",
     "build": "tsc",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build:all": "npm run build && npm run build:electron",
     "test": "vitest run",
     "start": "node dist/index.js",
     "link:local": "npm run build && npm link",
     "unlink:local": "npm unlink -g ovc",
-    "pack:app": "npm run build && npm pack"
+    "pack:app": "npm run build && npm pack",
+    "dist:gui": "npm run build:all && electron-builder",
+    "dist:win": "npm run build:all && electron-builder --win nsis --x64"
+  },
+  "build": {
+    "appId": "com.ovc.desktop",
+    "productName": "OVC",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "dist-electron/electron/main.js"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "@types/diff": "^7.0.2",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^25.7.0",
+    "electron": "^42.0.1",
+    "electron-builder": "^26.8.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"

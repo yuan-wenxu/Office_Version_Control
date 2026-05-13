@@ -3,10 +3,16 @@ node_modules/
 
 # Build output
 dist/
+dist-electron/
+release/
 coverage/
 
 # Packaged archives
 *.tgz
+
+# Runtime repositories created by ovc
+.office-vcs/
+**/.office-vcs/
 
 
 # Logs
