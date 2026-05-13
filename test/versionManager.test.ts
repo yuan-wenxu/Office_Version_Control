@@ -26,6 +26,7 @@ describe("VersionManager", () => {
     const versions = await manager.list(file);
     expect(versions).toHaveLength(2);
     expect(versions.map((item) => item.message)).toEqual(["first", "second"]);
+    expect(versions.every((item) => item.storageMode === "package")).toBe(true);
 
     const patch = await manager.diff(file, { from: "v1", to: "v2" });
     expect(patch).toContain("-Paper,10");
@@ -34,6 +35,25 @@ describe("VersionManager", () => {
     await manager.restore(file, { version: "v1", output: restored });
     const rows = await readWorkbook(restored);
     expect(rows).toEqual([["Item", "Amount"], ["Paper", 10]]);
+  });
+
+  it("stores Office package parts as deduplicated blobs", async () => {
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "office-vcs-"));
+    const repo = path.join(temp, ".office-vcs");
+    const file = path.join(temp, "budget.xlsx");
+    const manager = new VersionManager(getRepositoryPaths(repo));
+
+    await writeWorkbook(file, [["Item", "Amount"], ["Paper", 10]]);
+    await manager.saveVersion(file, { message: "first" });
+    await writeWorkbook(file, [["Item", "Amount"], ["Paper", 20]]);
+    await manager.saveVersion(file, { message: "second" });
+
+    const packages = await fs.readdir(path.join(repo, "packages"));
+    const blobs = await listFiles(path.join(repo, "blobs"));
+
+    expect(packages).toHaveLength(2);
+    expect(blobs.length).toBeGreaterThan(0);
+    expect(await fs.readdir(path.join(repo, "objects"))).toHaveLength(0);
   });
 
   it("stages and commits files like git", async () => {
@@ -103,4 +123,22 @@ async function readWorkbook(filePath: string): Promise<unknown[][]> {
     rows.push(Array.isArray(row.values) ? row.values.slice(1) : []);
   });
   return rows;
+}
+
+async function listFiles(directory: string): Promise<string[]> {
+  if (!(await fs.pathExists(directory))) return [];
+
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listFiles(fullPath)));
+    } else {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
 }

@@ -13,6 +13,8 @@ export class MetadataStore {
   async init(): Promise<void> {
     await fs.ensureDir(this.paths.root);
     await fs.ensureDir(this.paths.objects);
+    await fs.ensureDir(this.paths.blobs);
+    await fs.ensureDir(this.paths.packages);
     await fs.ensureDir(this.paths.snapshots);
 
     if (!(await fs.pathExists(this.paths.metadata))) {

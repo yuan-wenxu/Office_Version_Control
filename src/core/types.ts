@@ -7,6 +7,8 @@ export interface VersionRecord {
   kind: OfficeKind;
   hash: string;
   objectPath: string;
+  storageMode?: "object" | "package";
+  manifestPath?: string;
   textPath: string;
   message: string;
   createdAt: string;
@@ -50,6 +52,8 @@ export interface RestoreVersionOptions {
 export interface RepositoryPaths {
   root: string;
   objects: string;
+  blobs: string;
+  packages: string;
   snapshots: string;
   metadata: string;
 }

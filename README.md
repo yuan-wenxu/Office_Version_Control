@@ -3,15 +3,16 @@
 OVC is a TypeScript command-line tool for versioning Office files with a
 Git-like workflow.
 
-It stores full copies of `.docx`, `.xlsx`, and `.pptx` files by SHA-256 hash,
-and also extracts text snapshots so different versions can be compared with a
+It stores `.docx`, `.xlsx`, and `.pptx` files as content-addressed Office
+package parts, so unchanged internal files can be reused across versions. It
+also extracts text snapshots so different versions can be compared with a
 readable unified diff.
 
 ## Features
 
 - Git-like commands: `init`, `add`, `commit`, `status`, `log`, `diff`, `checkout`
 - Supports `.docx`, `.xlsx`, and `.pptx`
-- Stores original Office files safely, not only extracted text
+- Stores Office package parts as deduplicated blobs, not only extracted text
 - Avoids duplicate versions when file content has not changed
 - Generates text diffs from Office content
 - Can watch a file or directory and create versions automatically
@@ -216,12 +217,16 @@ OVC stores runtime data in `.office-vcs/`:
 ```text
 .office-vcs/
 ├── metadata.json
+├── blobs/
+├── packages/
 ├── objects/
 └── snapshots/
 ```
 
 - `metadata.json` records versions, staged files, paths, hashes, and messages
-- `objects/` stores the original Office files by content hash
+- `blobs/` stores deduplicated files from inside Office zip packages
+- `packages/` stores one manifest per version, pointing to blobs
+- `objects/` is kept for compatibility with older full-file versions
 - `snapshots/` stores extracted text used by `diff`
 
 Do not commit `.office-vcs/` to Git. It is ignored by `.gitignore`.
@@ -326,13 +331,17 @@ coverage/
 
 ## Limitations
 
-Office files are binary zip packages. OVC always stores the full original file,
-while text diff is best-effort:
+Office files are binary zip packages. OVC stores Office package parts as
+deduplicated blobs and reconstructs files during restore. This saves space when
+large internal parts, such as media files, do not change between versions.
+
+Text diff is best-effort:
 
 - `.docx` text is extracted with `mammoth`
 - `.xlsx` sheet data is converted to CSV-like text with `exceljs`
 - `.pptx` slide text is extracted from slide XML
 
 Formatting, comments, formulas, embedded media, and advanced Office metadata may
-not appear in text diffs, but the original Office file is still preserved in the
-stored version.
+not appear in text diffs. Restored Office files preserve document contents, but
+their zip byte layout may not be identical to the original file because the
+package is reconstructed from stored parts.

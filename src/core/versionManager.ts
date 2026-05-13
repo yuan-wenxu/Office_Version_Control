@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { Stats } from "node:fs";
+import { open } from "node:fs/promises";
 import fs from "fs-extra";
 import { sha256File } from "./hash.js";
 import type {
@@ -130,7 +131,7 @@ export class VersionManager {
       return previous;
     }
 
-    const objectPath = await this.objects.saveObject(absolutePath, hash);
+    const manifestPath = await this.objects.saveOfficePackage(absolutePath, hash);
     const text = await this.extractTextSnapshot(absolutePath);
     const textPath = await this.objects.saveSnapshot(hash, text);
     const record: VersionRecord = {
@@ -139,7 +140,9 @@ export class VersionManager {
       originalName: path.basename(absolutePath),
       kind: detectOfficeKind(absolutePath),
       hash,
-      objectPath,
+      objectPath: manifestPath,
+      storageMode: "package",
+      manifestPath,
       textPath,
       message: options.message ?? "",
       createdAt: new Date().toISOString(),
@@ -176,7 +179,11 @@ export class VersionManager {
     }
 
     await fs.ensureDir(path.dirname(targetPath));
-    await fs.copy(record.objectPath, targetPath, { overwrite: true });
+    if (record.storageMode === "package" || record.manifestPath) {
+      await this.objects.restoreOfficePackage(record.manifestPath ?? record.objectPath, targetPath);
+    } else {
+      await fs.copy(record.objectPath, targetPath, { overwrite: true });
+    }
     return targetPath;
   }
 
@@ -202,9 +209,15 @@ export class VersionManager {
       throw new Error(`Invalid Office file: ${absolutePath} is too small to be a valid .docx/.xlsx/.pptx file.`);
     }
 
-    const signature = (await fs.readFile(absolutePath)).subarray(0, 4);
-    if (signature[0] !== 0x50 || signature[1] !== 0x4b) {
-      throw new Error(`Invalid Office file: ${absolutePath} is not a valid zipped Office document.`);
+    const handle = await open(absolutePath, "r");
+    try {
+      const signature = Buffer.alloc(4);
+      await handle.read(signature, 0, signature.length, 0);
+      if (signature[0] !== 0x50 || signature[1] !== 0x4b) {
+        throw new Error(`Invalid Office file: ${absolutePath} is not a valid zipped Office document.`);
+      }
+    } finally {
+      await handle.close();
     }
 
     return stat;
