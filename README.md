@@ -144,20 +144,42 @@ run:
 .\office-addin\check-office-addin.ps1
 ```
 
-Then restart Word, Excel, or PowerPoint and add OVC from the `Shared Folder`
-tab in the Office Add-ins dialog.
+### Loading the add-in in Office
 
-If your Office build does not show a `Shared Folder` tab, use:
+After running the installer (or `setup-office-addin.ps1`), restart Word, Excel,
+or PowerPoint, then load OVC using one of the methods below.
 
-```text
-Add-ins > More Add-ins > My Add-ins > Add a custom add-in > Add from file
-```
+**Method A — My Add-ins (recommended for Microsoft 365)**
 
-Then choose:
+1. Open any Word, Excel, or PowerPoint document.
+2. Click the **Insert** tab in the ribbon.
+3. Click **Add-ins** (or **Get Add-ins**).
+4. In the dialog that opens, choose **My Add-ins** from the top.
+5. Scroll to find **OVC**, then click it to insert the task pane.
 
-```text
-office-addin/manifest.xml
-```
+If OVC does not appear under My Add-ins, try the **Shared Folder** tab
+(visible when the catalog is registered) or use Method B below.
+
+**Method B — Add from file (one-time manual load)**
+
+1. Open any Word, Excel, or PowerPoint document.
+2. Click **Insert → Add-ins → More Add-ins** (or **Get Add-ins**).
+3. In the Office Add-ins dialog, click **Upload My Add-in** or choose
+   **Add a custom add-in → Add from file…**
+4. Browse to `office-addin\manifest.xml` inside the OVC installation folder
+   (default: `C:\Program Files\OVC\resources\office-addin\manifest.xml`)
+   or the cloned repository root.
+5. Click **Open**. The OVC task pane opens on the right side of the document.
+
+> **Note:** OVC must be running before you open the add-in. If Office shows a
+> certificate or connection error, open the OVC desktop app first, then reload
+> the add-in.
+
+### Pinning OVC for quick access
+
+After inserting the task pane for the first time, it reopens automatically the
+next time you open the same document. To add OVC to the ribbon permanently,
+right-click the task pane title bar and choose **Attach to Ribbon**.
 
 Current add-in features:
 
