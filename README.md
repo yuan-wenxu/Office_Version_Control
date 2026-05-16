@@ -1,218 +1,176 @@
 # OVC
 
-OVC is a TypeScript command-line tool for versioning Office files with a
-Git-like workflow.
+OVC is a desktop version-control tool for Office files. It is now built with a
+Rust core and a Tauri desktop GUI. The CLI and Electron/TypeScript runtime have
+been removed.
 
-It stores `.docx`, `.xlsx`, and `.pptx` files as content-addressed Office
-package parts, so unchanged internal files can be reused across versions. It
-also extracts text snapshots so different versions can be compared with a
-readable unified diff.
+OVC supports `.docx`, `.xlsx`, and `.pptx`. It stores Office files as
+content-addressed package parts, so unchanged internal files can be reused
+between versions. It also creates text snapshots for readable diffs.
 
 ## Features
 
-- Git-like commands: `init`, `add`, `commit`, `status`, `log`, `diff`, `checkout`
-- Supports `.docx`, `.xlsx`, and `.pptx`
-- Stores Office package parts as deduplicated blobs, not only extracted text
-- Avoids duplicate versions when file content has not changed
-- Generates text diffs from Office content
-- Can watch a file or directory and create versions automatically
-- Provides clear errors for corrupted or invalid Office files
+- Tauri desktop app for Windows/Linux/macOS builds
+- Office add-in task pane for Word, Excel, and PowerPoint
+- Local `.office-vcs/` repository in each workspace
+- Automatic detection of changed tracked files
+- Commit detected changes without manually adding files again
+- History, latest diff, and checkout/restore
+- Deduplicated blob storage for Office package contents
+- HTTPS local API for the Office add-in at `https://localhost:38655`
 
 ## Requirements
 
-- Node.js 20 or newer
-- npm
+- Rust stable
+- Cargo
+- Tauri CLI 2.x
+- Platform dependencies for Tauri
 
-## Installation
+Install the Tauri prerequisites for your platform before building.
 
-Install dependencies:
+## Development
 
-```bash
-npm install
-```
-
-Build the project:
+Run the desktop app:
 
 ```bash
-npm run build
+cd src-tauri
+cargo tauri dev
 ```
 
-Install the CLI locally on your machine:
+Check Rust compilation:
 
 ```bash
-npm run link:local
+cd src-tauri
+cargo check
 ```
 
-After that, the `ovc` command is available:
+Format Rust code:
 
 ```bash
-ovc --help
+cd src-tauri
+cargo fmt
 ```
 
-To remove the linked command:
+Build the desktop app:
 
 ```bash
-npm run unlink:local
+cd src-tauri
+cargo tauri build
 ```
 
-## Quick Start
+On Windows this creates an NSIS installer. Build output is written under:
 
-Create a version repository in the current directory:
+```text
+src-tauri/target/release/bundle/nsis/
+```
+
+When cross-compiling from Linux for Windows:
 
 ```bash
-ovc init
+cd src-tauri
+cargo tauri build --target x86_64-pc-windows-gnu --bundles nsis
 ```
 
-Stage an Office file:
+The Windows installer is written under:
 
-```bash
-ovc add ./docs/report.docx
+```text
+src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/
 ```
 
-Check what is staged or modified:
+## Desktop App Usage
 
-```bash
-ovc status
+1. Open OVC.
+2. Click `Workspace` and choose a folder.
+3. Click `Init` to create `.office-vcs/`.
+4. Click `Track files` and choose `.docx`, `.xlsx`, or `.pptx` files.
+5. Enter a commit message.
+6. Click `Commit detected changes`.
+7. After editing tracked files, return to OVC and click `Commit detected changes` again.
+
+The app automatically detects modified tracked files. New files still need to be
+selected once with `Track files`.
+
+## Office Add-in
+
+The add-in files live in:
+
+```text
+office-addin/
 ```
 
-Create a committed version:
+The manifest is:
 
-```bash
-ovc commit -m "first draft"
+```text
+office-addin/manifest.xml
 ```
 
-View history:
+The Tauri desktop app starts a local HTTPS API automatically:
 
-```bash
-ovc log ./docs/report.docx
+```text
+https://localhost:38655
 ```
 
-Compare two versions:
+Before sideloading the add-in on Windows, trust the local certificate:
 
-```bash
-ovc diff ./docs/report.docx --from v1 --to v2
+```text
+The Windows installer imports the certificate automatically for the current user.
 ```
 
-Restore a version:
+If Office reports a localhost or certificate error, run the one-time setup from
+an Administrator PowerShell window:
 
-```bash
-ovc checkout ./docs/report.docx --version v1
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\office-addin\setup-office-addin.ps1
 ```
 
-## Commands
+This installs the trusted certificate for the current Windows user and adds the
+Office WebView localhost loopback exemption. It also creates a local trusted
+add-in catalog at `\\<your-computer-name>\OVCOfficeAddinCatalog` and registers
+it in Office.
 
-### `ovc init`
+If you run from the repository without installing the app, install only the
+certificate manually:
 
-Creates the local OVC repository.
-
-```bash
-ovc init
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\office-addin\install-office-addin-cert.ps1
 ```
 
-By default, OVC writes data to `.office-vcs/` in the current directory.
+To diagnose certificate or local API problems on Windows, open OVC first, then
+run:
 
-### `ovc add <files...>`
-
-Stages one or more Office files for the next commit.
-
-```bash
-ovc add ./docs/report.docx ./docs/budget.xlsx
+```powershell
+.\office-addin\check-office-addin.ps1
 ```
 
-Only `.docx`, `.xlsx`, and `.pptx` files are supported.
+Then restart Word, Excel, or PowerPoint and add OVC from the `Shared Folder`
+tab in the Office Add-ins dialog.
 
-### `ovc commit -m <message>`
+If your Office build does not show a `Shared Folder` tab, use:
 
-Creates versions for all staged files.
-
-```bash
-ovc commit -m "update quarterly documents"
+```text
+Add-ins > More Add-ins > My Add-ins > Add a custom add-in > Add from file
 ```
 
-If a staged file has the same content as its latest version, OVC will not create
-a duplicate stored object.
+Then choose:
 
-### `ovc status`
-
-Shows staged files, modified tracked files, and missing tracked files.
-
-```bash
-ovc status
+```text
+office-addin/manifest.xml
 ```
 
-### `ovc log [file]`
+Current add-in features:
 
-Shows version history. Without a file, it shows all known versions.
+- Detect current local Office document path when Office exposes it
+- Save the current document as a new OVC version
+- Show version history for the current document
 
-```bash
-ovc log
-ovc log ./docs/report.docx
-```
-
-### `ovc diff <file>`
-
-Shows a text diff between two versions.
-
-```bash
-ovc diff ./docs/report.docx --from v1 --to v2
-```
-
-If `--from` and `--to` are omitted, OVC compares the two latest versions:
-
-```bash
-ovc diff ./docs/report.docx
-```
-
-### `ovc checkout <file>`
-
-Restores a saved version.
-
-```bash
-ovc checkout ./docs/report.docx --version v1
-```
-
-Restore to another path:
-
-```bash
-ovc checkout ./docs/report.docx --version v1 --output ./restored/report.docx
-```
-
-### `ovc snapshot <file>`
-
-Creates a version immediately without staging.
-
-```bash
-ovc snapshot ./docs/report.docx -m "quick save"
-```
-
-### `ovc watch <target>`
-
-Watches a file or directory and saves a version when supported Office files
-change.
-
-```bash
-ovc watch ./docs
-```
-
-Add existing Office files before watching:
-
-```bash
-ovc watch ./docs --include-existing
-```
-
-## Custom Repository Path
-
-Use `--repo <path>` to store OVC data somewhere other than `.office-vcs/`.
-
-```bash
-ovc --repo ./my-office-history init
-ovc --repo ./my-office-history add ./docs/report.docx
-ovc --repo ./my-office-history commit -m "first version"
-```
+If Office cannot expose the local file path, paste the file path manually in the
+task pane.
 
 ## Repository Data
 
-OVC stores runtime data in `.office-vcs/`:
+Each workspace stores runtime data in `.office-vcs/`:
 
 ```text
 .office-vcs/
@@ -223,193 +181,81 @@ OVC stores runtime data in `.office-vcs/`:
 └── snapshots/
 ```
 
-- `metadata.json` records versions, staged files, paths, hashes, and messages
+- `metadata.json` records tracked files, versions, hashes, messages, and paths
 - `blobs/` stores deduplicated files from inside Office zip packages
-- `packages/` stores one manifest per version, pointing to blobs
-- `objects/` is kept for compatibility with older full-file versions
-- `snapshots/` stores extracted text used by `diff`
+- `packages/` stores one manifest per saved version
+- `objects/` is kept for compatibility with older storage layouts
+- `snapshots/` stores extracted text used by diff
 
-Do not commit `.office-vcs/` to Git. It is ignored by `.gitignore`.
+Do not commit `.office-vcs/` to Git.
 
 ## Project Structure
 
 ```text
 .
-├── src/
-│   ├── index.ts
-│   ├── cli.ts
-│   ├── watcher.ts
-│   ├── core/
-│   ├── office/
-│   └── storage/
-├── electron/
-│   ├── main.ts
-│   └── preload.ts
-├── renderer/
+├── app/
 │   ├── index.html
 │   ├── styles.css
 │   └── app.js
-├── test/
-├── package.json
-├── package-lock.json
-├── tsconfig.json
-├── tsconfig.electron.json
+├── office-addin/
+│   ├── certs/
+│   ├── manifest.xml
+│   ├── taskpane.html
+│   ├── taskpane.css
+│   └── taskpane.js
+├── src-tauri/
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
+│   ├── icons/
+│   └── src/
+│       ├── main.rs
+│       ├── core.rs
+│       ├── office.rs
+│       └── api.rs
 └── README.md
 ```
 
-- `src/index.ts` is the CLI entry point
-- `src/cli.ts` defines commands and command-line options
-- `src/core/` contains the version-management logic
-- `src/office/` detects Office files, extracts text, and creates diffs
-- `src/storage/` reads and writes local repository data
-- `src/watcher.ts` implements file watching
-- `electron/` contains the desktop app main process and preload bridge
-- `renderer/` contains the desktop app HTML, CSS, and browser-side JavaScript
-- `test/` contains automated verification for the core behavior
+## Certificates
 
-## Development
+The HTTPS server at `https://localhost:38655` uses a self-signed TLS certificate.
+The certificate files live in `office-addin/certs/`:
 
-Run the CLI directly from TypeScript:
+| File | Purpose | Committed |
+|---|---|---|
+| `ovc-localhost-ca.crt` | CA certificate (public) | ✅ yes |
+| `ovc-localhost-ca.key` | CA private key | ❌ no — in `.gitignore` |
+| `ovc-localhost.crt` | Server certificate (public) | ✅ yes |
+| `ovc-localhost.key` | Server private key | ❌ no — in `.gitignore` |
 
-```bash
-npm run dev -- --help
-npm run dev -- init
-```
+### First-time setup after cloning
 
-Run the desktop GUI in development:
+After cloning the repository, the `.key` files are not present.
+Regenerate them with:
 
 ```bash
-npm run gui
+bash office-addin/certs/generate-certs.sh
 ```
 
-Run tests:
+Requires `openssl` (available in WSL, Git for Windows, Homebrew, or any Linux distro).
 
-```bash
-npm test
+### After regenerating certificates
+
+New certificates have a different CA fingerprint, so Windows will no longer trust
+the old installed CA. Run the following in an Administrator PowerShell window:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\office-addin\uninstall-office-addin-cert.ps1
+.\office-addin\setup-office-addin.ps1
 ```
 
-Build JavaScript output:
-
-```bash
-npm run build
-```
-
-Build both CLI and desktop app TypeScript output:
-
-```bash
-npm run build:all
-```
-
-Check production dependencies:
-
-```bash
-npm audit --omit=dev
-```
-
-## Packaging
-
-Create an installable npm package archive:
-
-```bash
-npm run pack:app
-```
-
-This creates a file like:
-
-```text
-ovc-1.0.0.tgz
-```
-
-Install that archive globally:
-
-```bash
-npm install -g ./ovc-1.0.0.tgz
-ovc --help
-```
-
-## Desktop App
-
-OVC also includes a simple Electron desktop application. The GUI reuses the same
-core version-management code as the CLI.
-
-Current GUI features:
-
-- choose a workspace folder
-- initialize `.office-vcs`
-- select Office files
-- stage files
-- commit staged files
-- view status
-- view version history
-- show latest diff for a file
-- checkout a version to a chosen output path
-
-Run it locally:
-
-```bash
-npm run gui
-```
-
-Create a desktop build for the current platform:
-
-```bash
-npm run dist:gui
-```
-
-Create a Windows installer:
-
-```bash
-npm run dist:win
-```
-
-The packaged desktop app is written to:
-
-```text
-release/
-```
-
-## What To Commit To GitHub
-
-Commit source, tests, config, and documentation:
-
-```text
-src/
-electron/
-renderer/
-test/
-README.md
-package.json
-package-lock.json
-tsconfig.json
-tsconfig.electron.json
-.gitignore
-```
-
-Do not commit generated or local runtime files:
-
-```text
-node_modules/
-dist/
-dist-electron/
-release/
-.office-vcs/
-*.tgz
-coverage/
-```
 
 ## Limitations
 
-Office files are binary zip packages. OVC stores Office package parts as
-deduplicated blobs and reconstructs files during restore. This saves space when
-large internal parts, such as media files, do not change between versions.
+OVC targets modern Office Open XML files only: `.docx`, `.xlsx`, and `.pptx`.
+Older binary Office formats such as `.doc`, `.xls`, and `.ppt` are not
+supported.
 
-Text diff is best-effort:
-
-- `.docx` text is extracted with `mammoth`
-- `.xlsx` sheet data is converted to CSV-like text with `exceljs`
-- `.pptx` slide text is extracted from slide XML
-
-Formatting, comments, formulas, embedded media, and advanced Office metadata may
-not appear in text diffs. Restored Office files preserve document contents, but
-their zip byte layout may not be identical to the original file because the
-package is reconstructed from stored parts.
+Text diff is best-effort. Restored Office files preserve document contents, but
+their zip byte layout may not be byte-for-byte identical to the original because
+the package is reconstructed from stored parts.

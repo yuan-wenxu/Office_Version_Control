@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OVC Office Add-in</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <link rel="stylesheet" href="./taskpane.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="header-text">
+          <h1>OVC</h1>
+          <p>Version control for this Office file.</p>
+        </div>
+        <button id="collapseBtn" class="icon-btn" title="Minimize panel">&#8722;</button>
+      </header>
+
+      <section>
+        <label for="workspaceInput">Workspace folder</label>
+        <input id="workspaceInput" placeholder="Auto-detected from the current file's folder" />
+      </section>
+
+      <section>
+        <label for="filePathInput">Current Office file</label>
+        <input id="filePathInput" placeholder="Save this document first, or paste the file path" />
+        <button id="detectBtn" class="secondary">Detect Current File</button>
+      </section>
+
+      <section>
+        <label for="messageInput">Version message</label>
+        <textarea id="messageInput" rows="4" placeholder="Describe this version"></textarea>
+        <button id="saveVersionBtn">Save Version</button>
+      </section>
+
+      <section>
+        <div class="row">
+          <h2>History</h2>
+          <button id="historyBtn" class="secondary">Refresh</button>
+        </div>
+        <div id="historyList" class="history">No history loaded.</div>
+      </section>
+
+      <pre id="statusBox">Start the OVC desktop app, then choose a workspace.</pre>
+    </main>
+
+    <script src="./taskpane.js"></script>
+  </body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OVC</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="toolbar">
+        <div>
+          <h1>OVC</h1>
+          <p id="workspacePath">No workspace selected</p>
+        </div>
+        <div class="actions">
+          <button id="selectWorkspaceBtn">Workspace</button>
+          <button id="initBtn">Init</button>
+          <button id="selectFilesBtn">Track files</button>
+        </div>
+      </section>
+
+      <section class="commit-row">
+        <input id="commitMessage" placeholder="Commit message" />
+        <button id="commitBtn">Commit</button>
+      </section>
+
+      <p id="messageLine" class="message">Ready.</p>
+
+      <section class="grid">
+        <div class="panel">
+          <header>
+            <h2>Status</h2>
+            <button id="statusBtn">Refresh</button>
+          </header>
+          <pre id="statusOutput">Choose a workspace.</pre>
+        </div>
+
+        <div class="panel">
+          <header>
+            <h2>History</h2>
+            <button id="logBtn">Refresh</button>
+          </header>
+          <div id="trackedFilesList" class="tracked-files">No tracked files.</div>
+          <div id="historyList" class="history">No history loaded.</div>
+        </div>
+
+        <div class="panel diff-panel">
+          <header>
+            <h2>Diff</h2>
+            <button id="diffBtn">Diff</button>
+          </header>
+          <p id="diffFileLabel" class="diff-file">Choose a file in History.</p>
+          <div class="diff-controls">
+            <select id="fromVersionSelect" aria-label="From version"></select>
+            <select id="toVersionSelect" aria-label="To version"></select>
+          </div>
+          <pre id="diffOutput">Choose a tracked file with at least two versions.</pre>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
