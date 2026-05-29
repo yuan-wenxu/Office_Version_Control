@@ -1,12 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod api;
+mod certs;
 mod core;
 mod office;
 
 use std::path::PathBuf;
 
-use core::{RepositoryStatus, TrackedFile, VersionManager, VersionRecord};
+use core::{DiffResult, RepositoryStatus, TrackedFile, VersionManager, VersionRecord};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -100,7 +101,7 @@ fn tracked_files(workspace: String) -> Result<Vec<TrackedFile>, String> {
 }
 
 #[tauri::command]
-fn diff_latest(workspace: String, file_path: String) -> Result<String, String> {
+fn diff_latest(workspace: String, file_path: String) -> Result<DiffResult, String> {
     manager(workspace).diff_latest(&file_path).map_err(to_error)
 }
 
@@ -110,7 +111,7 @@ fn diff_versions(
     file_path: String,
     from_version: String,
     to_version: String,
-) -> Result<String, String> {
+) -> Result<DiffResult, String> {
     manager(workspace)
         .diff_versions(&file_path, &from_version, &to_version)
         .map_err(to_error)
@@ -130,6 +131,15 @@ fn checkout_version(
 }
 
 fn main() {
+    match handle_hidden_cli() {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    }
+
     api::start_background_server();
 
     tauri::Builder::default()
@@ -197,6 +207,19 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to run OVC");
+}
+
+fn handle_hidden_cli() -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    let args = std::env::args().collect::<Vec<_>>();
+    if args.get(1).map(String::as_str) == Some("--generate-office-certs") {
+        let addin_root = args
+            .get(2)
+            .map(PathBuf::from)
+            .unwrap_or_else(api::addin_root);
+        certs::generate_office_certs(&addin_root)?;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 fn manager(workspace: String) -> VersionManager {

@@ -110,10 +110,10 @@ The Tauri desktop app starts a local HTTPS API automatically:
 https://localhost:38655
 ```
 
-Before sideloading the add-in on Windows, trust the local certificate:
+Before sideloading the add-in on Windows, run the setup script:
 
 ```text
-The Windows installer imports the certificate automatically for the current user.
+The Windows installer runs this automatically when possible.
 ```
 
 If Office reports a localhost or certificate error, run the one-time setup from
@@ -124,25 +124,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\office-addin\setup-office-addin.ps1
 ```
 
-This installs the trusted certificate for the current Windows user and adds the
-Office WebView localhost loopback exemption. It also creates a local trusted
-add-in catalog at `\\<your-computer-name>\OVCOfficeAddinCatalog` and registers
-it in Office.
-
-If you run from the repository without installing the app, install only the
-certificate manually:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\office-addin\install-office-addin-cert.ps1
-```
-
-To diagnose certificate or local API problems on Windows, open OVC first, then
-run:
-
-```powershell
-.\office-addin\check-office-addin.ps1
-```
+This installs the trusted certificate, adds the Office WebView localhost loopback
+exemption, creates a local trusted add-in catalog at
+`\\<your-computer-name>\OVCOfficeAddinCatalog`, and registers OVC in Office.
 
 ### Loading the add-in in Office
 
@@ -240,25 +224,26 @@ Do not commit `.office-vcs/` to Git.
 ## Certificates
 
 The HTTPS server at `https://localhost:38655` uses a self-signed TLS certificate.
-The certificate files live in `office-addin/certs/`:
+Certificates are generated on the user's machine during installation by
+`setup-office-addin.ps1`, which calls the OVC executable's hidden
+`--generate-office-certs` command. The repository and installer do not ship a
+shared private key.
 
 | File | Purpose | Committed |
 |---|---|---|
-| `ovc-localhost-ca.crt` | CA certificate (public) | ✅ yes |
-| `ovc-localhost-ca.key` | CA private key | ❌ no — in `.gitignore` |
-| `ovc-localhost.crt` | Server certificate (public) | ✅ yes |
+| `ovc-localhost-ca.crt` | CA certificate generated at install time | ❌ no — generated locally |
+| `ovc-localhost-ca.key` | CA private key generated at install time | ❌ no — generated locally |
+| `ovc-localhost.crt` | Server certificate generated at install time | ❌ no — generated locally |
 | `ovc-localhost.key` | Server private key | ❌ no — in `.gitignore` |
 
 ### First-time setup after cloning
 
-After cloning the repository, the `.key` files are not present.
-Regenerate them with:
+After cloning the repository, generate certificates and register the add-in with:
 
-```bash
-bash office-addin/certs/generate-certs.sh
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\office-addin\setup-office-addin.ps1
 ```
-
-Requires `openssl` (available in WSL, Git for Windows, Homebrew, or any Linux distro).
 
 ### After regenerating certificates
 

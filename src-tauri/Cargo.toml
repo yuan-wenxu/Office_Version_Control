@@ -1,6 +1,6 @@
 [package]
 name = "ovc"
-version = "2.0.0"
+version = "2.1.0"
 description = "Office file version control desktop app"
 authors = ["OVC"]
 edition = "2021"
@@ -13,9 +13,11 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+base64 = "0.22"
 flate2 = "1"
 hex = "0.4"
 quick-xml = "0.38"
+rcgen = "0.13.2"
 rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

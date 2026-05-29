@@ -5,7 +5,7 @@
   xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
   xsi:type="TaskPaneApp">
   <Id>c8e4cc1a-13dd-49be-90d9-5a8c24f4f7bb</Id>
-  <Version>2.0.0.0</Version>
+  <Version>2.1.0.0</Version>
   <ProviderName>OVC</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="OVC"/>

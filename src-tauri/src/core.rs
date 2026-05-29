@@ -1,15 +1,16 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs::{self, File},
     io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use similar::TextDiff;
+use similar::{ChangeTag, TextDiff};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 
@@ -77,6 +78,54 @@ pub struct TrackedFile {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DiffVersionInfo {
+    pub id: String,
+    pub message: String,
+    pub created_at: String,
+    pub hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffLine {
+    pub kind: String,
+    pub old_line: Option<usize>,
+    pub new_line: Option<usize>,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffImage {
+    pub kind: String,
+    pub path: String,
+    pub old_hash: Option<String>,
+    pub new_hash: Option<String>,
+    pub old_size: Option<u64>,
+    pub new_size: Option<u64>,
+    pub old_data_url: Option<String>,
+    pub new_data_url: Option<String>,
+    pub preview_supported: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffResult {
+    pub from: DiffVersionInfo,
+    pub to: DiffVersionInfo,
+    pub added_lines: usize,
+    pub removed_lines: usize,
+    pub unchanged_lines: usize,
+    pub lines: Vec<DiffLine>,
+    pub added_images: usize,
+    pub removed_images: usize,
+    pub modified_images: usize,
+    pub unchanged_images: usize,
+    pub images: Vec<DiffImage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RepositoryMetadata {
     schema_version: u8,
     files: HashMap<String, Vec<VersionRecord>>,
@@ -103,7 +152,7 @@ struct PackageManifest {
     entries: Vec<PackageManifestEntry>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PackageManifestEntry {
     name: String,
@@ -285,7 +334,7 @@ impl VersionManager {
         Ok(files.into_values().collect())
     }
 
-    pub fn diff_latest(&self, file_path: &str) -> Result<String> {
+    pub fn diff_latest(&self, file_path: &str) -> Result<DiffResult> {
         let records = self.log(Some(file_path))?;
         if records.len() < 2 {
             return Err("At least two versions are required to diff this file.".into());
@@ -296,7 +345,7 @@ impl VersionManager {
         self.diff_records(from, to)
     }
 
-    pub fn diff_versions(&self, file_path: &str, from_id: &str, to_id: &str) -> Result<String> {
+    pub fn diff_versions(&self, file_path: &str, from_id: &str, to_id: &str) -> Result<DiffResult> {
         let records = self.log(Some(file_path))?;
         let from = records
             .iter()
@@ -458,21 +507,155 @@ impl VersionManager {
         }
     }
 
-    fn diff_records(&self, from: &VersionRecord, to: &VersionRecord) -> Result<String> {
+    fn diff_records(&self, from: &VersionRecord, to: &VersionRecord) -> Result<DiffResult> {
         let old_text =
             fs::read_to_string(self.resolve_stored_path(&from.text_path)).unwrap_or_default();
         let new_text =
             fs::read_to_string(self.resolve_stored_path(&to.text_path)).unwrap_or_default();
         let diff = TextDiff::from_lines(&old_text, &new_text);
-        let mut output = format!(
-            "--- {} {}\n+++ {} {}\n",
-            from.id, from.created_at, to.id, to.created_at
-        );
+        let mut added_lines = 0;
+        let mut removed_lines = 0;
+        let mut unchanged_lines = 0;
+        let mut lines = Vec::new();
+
         for change in diff.iter_all_changes() {
-            output.push(change.tag().to_string().chars().next().unwrap_or(' '));
-            output.push_str(change.value());
+            let kind = match change.tag() {
+                ChangeTag::Equal => {
+                    unchanged_lines += 1;
+                    "context"
+                }
+                ChangeTag::Delete => {
+                    removed_lines += 1;
+                    "removed"
+                }
+                ChangeTag::Insert => {
+                    added_lines += 1;
+                    "added"
+                }
+            };
+            lines.push(DiffLine {
+                kind: kind.to_string(),
+                old_line: change.old_index().map(|index| index + 1),
+                new_line: change.new_index().map(|index| index + 1),
+                text: change
+                    .value()
+                    .trim_end_matches(&['\r', '\n'][..])
+                    .to_string(),
+            });
         }
-        Ok(output)
+
+        let all_images = self.diff_images(from, to)?;
+        let added_images = all_images
+            .iter()
+            .filter(|item| item.kind == "added")
+            .count();
+        let removed_images = all_images
+            .iter()
+            .filter(|item| item.kind == "removed")
+            .count();
+        let modified_images = all_images
+            .iter()
+            .filter(|item| item.kind == "modified")
+            .count();
+        let unchanged_images = all_images
+            .iter()
+            .filter(|item| item.kind == "unchanged")
+            .count();
+        let images = all_images
+            .into_iter()
+            .filter(|item| item.kind != "unchanged")
+            .collect();
+
+        Ok(DiffResult {
+            from: DiffVersionInfo {
+                id: from.id.clone(),
+                message: from.message.clone(),
+                created_at: from.created_at.clone(),
+                hash: from.hash.clone(),
+            },
+            to: DiffVersionInfo {
+                id: to.id.clone(),
+                message: to.message.clone(),
+                created_at: to.created_at.clone(),
+                hash: to.hash.clone(),
+            },
+            added_lines,
+            removed_lines,
+            unchanged_lines,
+            lines,
+            added_images,
+            removed_images,
+            modified_images,
+            unchanged_images,
+            images,
+        })
+    }
+
+    fn diff_images(&self, from: &VersionRecord, to: &VersionRecord) -> Result<Vec<DiffImage>> {
+        let old_images = self.image_entries(from)?;
+        let new_images = self.image_entries(to)?;
+        let mut keys = old_images.keys().cloned().collect::<BTreeSet<_>>();
+        keys.extend(new_images.keys().cloned());
+
+        let mut images = Vec::new();
+        for path in keys {
+            let old_entry = old_images.get(&path);
+            let new_entry = new_images.get(&path);
+            let old_hash = old_entry.and_then(|entry| entry.hash.clone());
+            let new_hash = new_entry.and_then(|entry| entry.hash.clone());
+            let kind = match (&old_hash, &new_hash) {
+                (Some(old), Some(new)) if old == new => "unchanged",
+                (Some(_), Some(_)) => "modified",
+                (Some(_), None) => "removed",
+                (None, Some(_)) => "added",
+                _ => continue,
+            };
+
+            let preview_supported = image_mime(&path).is_some();
+            let include_preview = preview_supported && kind != "unchanged";
+            images.push(DiffImage {
+                kind: kind.to_string(),
+                path: path.clone(),
+                old_data_url: old_hash
+                    .as_deref()
+                    .filter(|_| include_preview)
+                    .and_then(|hash| self.image_data_url(&path, hash).ok()),
+                new_data_url: new_hash
+                    .as_deref()
+                    .filter(|_| include_preview)
+                    .and_then(|hash| self.image_data_url(&path, hash).ok()),
+                old_hash,
+                new_hash,
+                old_size: old_entry.and_then(|entry| entry.size),
+                new_size: new_entry.and_then(|entry| entry.size),
+                preview_supported,
+            });
+        }
+
+        Ok(images)
+    }
+
+    fn image_entries(
+        &self,
+        record: &VersionRecord,
+    ) -> Result<BTreeMap<String, PackageManifestEntry>> {
+        let manifest: PackageManifest = serde_json::from_str(&fs::read_to_string(
+            self.resolve_stored_path(&record.manifest_path),
+        )?)?;
+        Ok(manifest
+            .entries
+            .into_iter()
+            .filter(|entry| !entry.dir && is_office_image_entry(&entry.name))
+            .map(|entry| (entry.name.clone(), entry))
+            .collect())
+    }
+
+    fn image_data_url(&self, name: &str, hash: &str) -> Result<String> {
+        let Some(mime) = image_mime(name) else {
+            return Err(format!("Unsupported image preview format: {name}").into());
+        };
+        let data = read_blob_data(&self.blobs(), hash)?;
+        Ok(format!("data:{mime};base64,{}", BASE64.encode(data)))
     }
 
     fn normalize_metadata(&self, metadata: RepositoryMetadata) -> Result<RepositoryMetadata> {
@@ -622,6 +805,56 @@ fn restore_office_package(manifest_path: &Path, target_path: &Path, blobs: &Path
     }
     zip.finish()?;
     Ok(())
+}
+
+fn read_blob_data(blobs: &Path, hash: &str) -> Result<Vec<u8>> {
+    let raw = fs::read(blob_path(blobs, hash))?;
+    let mut decoder = GzDecoder::new(&raw[..]);
+    let mut data = Vec::new();
+    decoder.read_to_end(&mut data)?;
+    Ok(data)
+}
+
+fn is_office_image_entry(name: &str) -> bool {
+    let normalized = name.replace('\\', "/").to_ascii_lowercase();
+    (normalized.starts_with("word/media/")
+        || normalized.starts_with("ppt/media/")
+        || normalized.starts_with("xl/media/"))
+        && matches!(
+            Path::new(&normalized)
+                .extension()
+                .and_then(|value| value.to_str()),
+            Some(
+                "png"
+                    | "jpg"
+                    | "jpeg"
+                    | "gif"
+                    | "bmp"
+                    | "webp"
+                    | "svg"
+                    | "tif"
+                    | "tiff"
+                    | "emf"
+                    | "wmf"
+            )
+        )
+}
+
+fn image_mime(name: &str) -> Option<&'static str> {
+    match Path::new(name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => Some("image/png"),
+        Some("jpg" | "jpeg") => Some("image/jpeg"),
+        Some("gif") => Some("image/gif"),
+        Some("bmp") => Some("image/bmp"),
+        Some("webp") => Some("image/webp"),
+        Some("svg") => Some("image/svg+xml"),
+        _ => None,
+    }
 }
 
 fn validate_office_file(path: &Path) -> Result<fs::Metadata> {

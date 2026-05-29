@@ -11,7 +11,7 @@ $manifestSource = Join-Path $PSScriptRoot "manifest.xml"
 $manifestTarget = Join-Path $catalogPath "manifest.xml"
 
 if (-not $isAdmin) {
-  Write-Host "Requesting Administrator permission for Office catalog setup..."
+  Write-Host "Requesting Administrator permission for Office add-in setup..."
   $arguments = @(
     "-NoProfile",
     "-ExecutionPolicy",
@@ -23,7 +23,123 @@ if (-not $isAdmin) {
   exit
 }
 
-& (Join-Path $PSScriptRoot "install-office-addin-cert.ps1")
+Write-Host "OVC Office add-in setup"
+Write-Host ""
+Write-Host "Preparing OVC localhost certificates..."
+
+$certDir = Join-Path $PSScriptRoot "certs"
+$caPath = Join-Path $PSScriptRoot "certs\ovc-localhost-ca.crt"
+$caKeyPath = Join-Path $PSScriptRoot "certs\ovc-localhost-ca.key"
+$serverPath = Join-Path $PSScriptRoot "certs\ovc-localhost.crt"
+$serverKeyPath = Join-Path $PSScriptRoot "certs\ovc-localhost.key"
+$generatedCertFiles = @($caPath, $caKeyPath, $serverPath, $serverKeyPath)
+$oldOvcThumbprints = @(
+  "2C875078EE38009479F27969EEEE1C1769505C8CEE46FDA2CDF6D9D5D963A9D6",
+  "3E780318E2641D79800E2160E8C0D0FCBB22672241AAC1825DC251B7A2C4418A",
+  "6C1FA4E69E1ECE87C0C567502FB7BB636CC044ED",
+  "E1E2BCAEBD638B1E1C2844DE38333D1EC3504307"
+)
+
+function Find-OvcExe {
+  $candidates = @(
+    (Join-Path $PSScriptRoot "..\..\ovc.exe"),
+    (Join-Path $PSScriptRoot "..\ovc.exe"),
+    (Join-Path $PSScriptRoot "..\src-tauri\target\debug\ovc.exe"),
+    (Join-Path $PSScriptRoot "..\src-tauri\target\release\ovc.exe"),
+    (Join-Path (Get-Location) "ovc.exe")
+  )
+  foreach ($candidate in $candidates) {
+    $resolved = Resolve-Path $candidate -ErrorAction SilentlyContinue
+    if ($resolved) { return $resolved.Path }
+  }
+  return $null
+}
+
+function Generate-OvcCertificates {
+  New-Item -ItemType Directory -Force -Path $certDir | Out-Null
+  $ovcExe = Find-OvcExe
+  if (-not $ovcExe) {
+    throw "OVC executable was not found. Cannot generate localhost certificates."
+  }
+
+  Write-Host "Generating machine-local certificates with: $ovcExe"
+  & $ovcExe --generate-office-certs $PSScriptRoot
+  if ($LASTEXITCODE -ne 0) {
+    throw "OVC certificate generation failed with exit code $LASTEXITCODE."
+  }
+}
+
+$needsGeneration = $false
+foreach ($file in $generatedCertFiles) {
+  if (-not (Test-Path $file)) { $needsGeneration = $true }
+}
+if (-not $needsGeneration) {
+  try {
+    $existingCa = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path $caPath))
+    if ($oldOvcThumbprints -contains $existingCa.Thumbprint) {
+      Write-Host "Found legacy packaged OVC certificate; regenerating a machine-local certificate."
+      $needsGeneration = $true
+    }
+  } catch {
+    $needsGeneration = $true
+  }
+}
+if ($needsGeneration) {
+  foreach ($file in $generatedCertFiles) {
+    Remove-Item -Force $file -ErrorAction SilentlyContinue
+  }
+  Generate-OvcCertificates
+}
+
+Write-Host "Installing OVC localhost certificates..."
+$caCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path $caPath))
+$serverCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path $serverPath))
+
+function Invoke-WithStore($storeName, $storeLocation, [scriptblock]$action) {
+  $store = New-Object System.Security.Cryptography.X509Certificates.X509Store(
+    $storeName, $storeLocation
+  )
+  $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+  try { & $action $store }
+  finally { $store.Close() }
+}
+
+$locationsToClean = @(
+  @{ Store = "Root";          Location = "LocalMachine" },
+  @{ Store = "Root";          Location = "CurrentUser"  },
+  @{ Store = "TrustedPeople"; Location = "CurrentUser"  }
+)
+foreach ($entry in $locationsToClean) {
+  try {
+    Invoke-WithStore $entry.Store $entry.Location {
+      param($store)
+      $stale = $store.Certificates | Where-Object {
+        $oldOvcThumbprints -contains $_.Thumbprint -or
+        ($_.Subject -eq "CN=OVC Localhost CA" -and $_.Thumbprint -ne $caCert.Thumbprint) -or
+        ($_.Subject -eq "CN=localhost" -and $_.Issuer -eq "CN=OVC Localhost CA" -and $_.Thumbprint -ne $serverCert.Thumbprint)
+      }
+      foreach ($cert in $stale) { $store.Remove($cert) }
+    }
+  } catch { <# skip stores we cannot open #> }
+}
+
+Invoke-WithStore "Root" "LocalMachine" {
+  param($store)
+  $existing = $store.Certificates | Where-Object { $_.Thumbprint -eq $caCert.Thumbprint }
+  if (-not $existing) {
+    $store.Add($caCert)
+  }
+}
+Write-Host "  CA trusted in LocalMachine\Root"
+
+Invoke-WithStore "TrustedPeople" "CurrentUser" {
+  param($store)
+  $existing = $store.Certificates | Where-Object { $_.Thumbprint -eq $serverCert.Thumbprint }
+  if (-not $existing) {
+    $store.Add($serverCert)
+  }
+}
+Write-Host "  Server certificate trusted in CurrentUser\TrustedPeople"
 
 Write-Host ""
 Write-Host "Clearing Office WEF cache (ensures updated manifest is loaded fresh)..."

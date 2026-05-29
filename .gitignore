@@ -16,6 +16,8 @@ coverage/
 
 # Private keys — never commit; regenerate with the cert generation script
 office-addin/certs/*.key
+office-addin/certs/*.crt
+!office-addin/certs/.gitkeep
 
 # Runtime repositories created by ovc
 .office-vcs/

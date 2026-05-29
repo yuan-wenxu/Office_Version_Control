@@ -7,7 +7,7 @@ use std::{
 use serde::Deserialize;
 use tiny_http::{Header, Method, Response, Server, SslConfig, StatusCode};
 
-use crate::core::VersionManager;
+use crate::{certs::ensure_office_certs, core::VersionManager};
 
 const PORT: u16 = 38655;
 
@@ -30,6 +30,7 @@ pub fn start_background_server() {
 
 fn run_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let root = addin_root();
+    ensure_office_certs(&root)?;
     // Build a full PEM chain: leaf certificate followed by the CA certificate.
     // WebView2 (Chromium) requires the complete chain in the TLS handshake to
     // validate the certificate even when the CA is present in the trust store.

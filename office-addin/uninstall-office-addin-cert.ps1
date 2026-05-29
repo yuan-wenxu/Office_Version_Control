@@ -2,8 +2,16 @@ $ErrorActionPreference = "Stop"
 
 $caPath = Join-Path $PSScriptRoot "certs\ovc-localhost-ca.crt"
 $serverPath = Join-Path $PSScriptRoot "certs\ovc-localhost.crt"
-$caCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path $caPath))
-$serverCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path $serverPath))
+$caCert = if (Test-Path $caPath) {
+  New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path $caPath))
+} else {
+  $null
+}
+$serverCert = if (Test-Path $serverPath) {
+  New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path $serverPath))
+} else {
+  $null
+}
 $shareName = "OVCOfficeAddinCatalog"
 $catalogRegistryPath = "HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{c8e4cc1a-13dd-49be-90d9-5a8c24f4f7bb}"
 $allowedDomainsPath = "HKCU:\Software\Microsoft\Office\16.0\WEF\AllowedAppDomains"
@@ -12,8 +20,7 @@ $oldOvcThumbprints = @(
   "3E780318E2641D79800E2160E8C0D0FCBB22672241AAC1825DC251B7A2C4418A"
 )
 
-# Remove OVC CA from all stores where install-office-addin-cert.ps1 may have
-# placed it (LocalMachine\Root when run as admin, CurrentUser\Root otherwise).
+# Remove OVC CA from all stores where setup-office-addin.ps1 may have placed it.
 $locationsToCheck = @(
   @{ Location = "LocalMachine"; Store = "Root" },
   @{ Location = "CurrentUser";  Store = "Root" },
@@ -33,10 +40,11 @@ foreach ($entry in $locationsToCheck) {
 
   try {
     $matches = $store.Certificates | Where-Object {
-      $_.Thumbprint -eq $caCert.Thumbprint -or
-      $_.Thumbprint -eq $serverCert.Thumbprint -or
+      ($caCert -and $_.Thumbprint -eq $caCert.Thumbprint) -or
+      ($serverCert -and $_.Thumbprint -eq $serverCert.Thumbprint) -or
       $oldOvcThumbprints -contains $_.Thumbprint -or
-      $_.Subject -eq "CN=OVC Localhost CA"
+      $_.Subject -eq "CN=OVC Localhost CA" -or
+      ($_.Subject -eq "CN=localhost" -and $_.Issuer -eq "CN=OVC Localhost CA")
     }
     foreach ($cert in $matches) {
       $store.Remove($cert)

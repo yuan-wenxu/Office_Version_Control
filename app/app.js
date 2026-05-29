@@ -5,7 +5,9 @@ const state = {
   historyFile: "",
   history: [],
   trackedFiles: [],
-  diffHistory: []
+  diffHistory: [],
+  latestDiff: null,
+  activeDiffTab: "text"
 };
 
 const elements = {
@@ -18,8 +20,13 @@ const elements = {
   diffFileLabel: document.querySelector("#diffFileLabel"),
   fromVersionSelect: document.querySelector("#fromVersionSelect"),
   toVersionSelect: document.querySelector("#toVersionSelect"),
-  diffOutput: document.querySelector("#diffOutput")
+  diffOutput: document.querySelector("#diffOutput"),
+  diffTextTab: document.querySelector("#diffTextTab"),
+  diffImagesTab: document.querySelector("#diffImagesTab")
 };
+
+updateUiScale();
+window.addEventListener("resize", updateUiScale, { passive: true });
 
 document.querySelector("#selectWorkspaceBtn").addEventListener("click", async () => {
   await run(async () => {
@@ -30,6 +37,7 @@ document.querySelector("#selectWorkspaceBtn").addEventListener("click", async ()
     state.history = [];
     state.trackedFiles = [];
     state.diffHistory = [];
+    state.latestDiff = null;
     elements.workspacePath.textContent = workspace;
     elements.diffFileLabel.textContent = "Choose a file in History.";
     renderTrackedFiles();
@@ -75,6 +83,16 @@ document.querySelector("#logBtn").addEventListener("click", async () => {
   });
 });
 
+elements.diffTextTab.addEventListener("click", () => {
+  state.activeDiffTab = "text";
+  renderDiff(state.latestDiff);
+});
+
+elements.diffImagesTab.addEventListener("click", () => {
+  state.activeDiffTab = "images";
+  renderDiff(state.latestDiff);
+});
+
 document.querySelector("#commitBtn").addEventListener("click", async () => {
   await run(async () => {
     requireWorkspace();
@@ -98,12 +116,14 @@ document.querySelector("#diffBtn").addEventListener("click", async () => {
     const toVersion = elements.toVersionSelect.value;
     if (!fromVersion || !toVersion) throw new Error("Choose two versions before diffing.");
     if (fromVersion === toVersion) throw new Error("Choose two different versions.");
-    elements.diffOutput.textContent = await invoke("diff_versions", {
+    const diff = await invoke("diff_versions", {
       workspace: state.workspace,
       filePath,
       fromVersion,
       toVersion
     });
+    state.latestDiff = diff;
+    renderDiff(diff);
     setMessage("Diff loaded.");
   });
 });
@@ -156,6 +176,7 @@ async function refreshTrackedFiles() {
     state.historyFile = "";
     state.history = [];
     state.diffHistory = [];
+    state.latestDiff = null;
     elements.diffFileLabel.textContent = "Choose a file in History.";
     renderHistory();
     renderDiffVersionOptions();
@@ -177,14 +198,15 @@ async function refreshDiffVersions() {
   state.diffHistory = await invoke("log", { workspace: state.workspace, filePath });
   renderDiffVersionOptions();
   if (state.diffHistory.length < 2) {
-    elements.diffOutput.textContent = "At least two versions are required to diff this file.";
+    renderDiffMessage("At least two versions are required to diff this file.");
   } else {
-    elements.diffOutput.textContent = "Choose versions, then click Diff.";
+    renderDiffMessage("Choose versions, then click Diff.");
   }
 }
 
 async function selectTrackedFile(sourcePath, announce = true) {
   state.historyFile = sourcePath;
+  state.latestDiff = null;
   const label = displayPath(sourcePath);
   elements.diffFileLabel.textContent = label;
   renderTrackedFiles();
@@ -269,9 +291,9 @@ function renderDiffVersionOptions() {
   if (!state.diffHistory.length) {
     elements.fromVersionSelect.append(new Option("From", ""));
     elements.toVersionSelect.append(new Option("To", ""));
-    elements.diffOutput.textContent = state.historyFile
+    renderDiffMessage(state.historyFile
       ? "At least two versions are required to diff this file."
-      : "Choose a tracked file with at least two versions.";
+      : "Choose a tracked file with at least two versions.");
     return;
   }
 
@@ -286,6 +308,246 @@ function renderDiffVersionOptions() {
     elements.fromVersionSelect.value = records[records.length - 2].id;
     elements.toVersionSelect.value = records[records.length - 1].id;
   }
+}
+
+function renderDiff(diff) {
+  setDiffTabState();
+  if (!diff) {
+    renderDiffMessage(state.historyFile
+      ? "Choose versions, then click Diff."
+      : "Choose a tracked file with at least two versions.");
+    return;
+  }
+
+  if (state.activeDiffTab === "images") {
+    renderImageDiff(diff);
+  } else {
+    renderTextDiff(diff);
+  }
+}
+
+function renderTextDiff(diff) {
+  elements.diffOutput.textContent = "";
+  elements.diffOutput.dataset.view = "text";
+
+  const summary = document.createElement("div");
+  summary.className = "diff-summary";
+
+  const version = document.createElement("div");
+  version.className = "diff-version";
+  const title = document.createElement("strong");
+  title.textContent = `${diff.from.id} -> ${diff.to.id}`;
+  const meta = document.createElement("small");
+  meta.textContent = `${diff.from.message || "No message"} -> ${diff.to.message || "No message"}`;
+  version.append(title, meta);
+
+  const added = document.createElement("div");
+  added.className = "diff-stat";
+  added.dataset.kind = "added";
+  added.append(statStrong(`+${diff.addedLines}`), statSmall("added"));
+
+  const removed = document.createElement("div");
+  removed.className = "diff-stat";
+  removed.dataset.kind = "removed";
+  removed.append(statStrong(`-${diff.removedLines}`), statSmall("removed"));
+
+  summary.append(version, added, removed);
+
+  const list = document.createElement("div");
+  list.className = "diff-list";
+
+  if (!diff.lines.length || (!diff.addedLines && !diff.removedLines)) {
+    const empty = document.createElement("div");
+    empty.className = "diff-empty";
+    empty.textContent = "No text changes detected between these versions.";
+    list.append(empty);
+  } else {
+    for (const line of diff.lines) {
+      list.append(renderDiffLine(line));
+    }
+  }
+
+  elements.diffOutput.append(summary, list);
+}
+
+function renderImageDiff(diff) {
+  elements.diffOutput.textContent = "";
+  elements.diffOutput.dataset.view = "images";
+
+  const summary = document.createElement("div");
+  summary.className = "diff-summary diff-summary-images";
+
+  const version = document.createElement("div");
+  version.className = "diff-version";
+  version.append(
+    statStrong(`${diff.from.id} -> ${diff.to.id}`),
+    statSmall(`${diff.from.message || "No message"} -> ${diff.to.message || "No message"}`)
+  );
+
+  const added = imageStat("+", diff.addedImages, "added");
+  const removed = imageStat("-", diff.removedImages, "removed");
+  const modified = imageStat("~", diff.modifiedImages, "changed");
+  summary.append(version, added, removed, modified);
+
+  const card = document.createElement("div");
+  card.className = "image-diff-card";
+
+  const changedImages = (diff.images || []).filter((image) => image.kind !== "unchanged");
+  if (!changedImages.length) {
+    const empty = document.createElement("div");
+    empty.className = "diff-empty";
+    empty.textContent = diff.unchangedImages
+      ? `No image changes detected. ${diff.unchangedImages} image(s) are unchanged.`
+      : "No images detected between these versions.";
+    card.append(empty);
+  } else {
+    for (const image of changedImages) {
+      card.append(renderImageDiffItem(image));
+    }
+  }
+
+  elements.diffOutput.append(summary, card);
+}
+
+function renderImageDiffItem(image) {
+  const item = document.createElement("article");
+  item.className = "image-diff-item";
+  item.dataset.kind = image.kind;
+
+  const header = document.createElement("header");
+  const title = document.createElement("strong");
+  title.textContent = displayMediaName(image.path);
+  const badge = document.createElement("span");
+  badge.className = "image-diff-badge";
+  badge.textContent = image.kind;
+  header.append(title, badge);
+
+  const previews = document.createElement("div");
+  previews.className = "image-preview-pair";
+
+  if (image.kind !== "added") {
+    previews.append(renderImagePreview("Before", image.oldDataUrl, image.oldSize, image.oldHash));
+  }
+
+  if (image.kind !== "removed") {
+    previews.append(renderImagePreview("After", image.newDataUrl, image.newSize, image.newHash));
+  }
+
+  item.append(header, previews);
+  return item;
+}
+
+function renderImagePreview(label, dataUrl, size, hash) {
+  const preview = document.createElement("div");
+  preview.className = "image-preview";
+
+  const imageWrap = document.createElement("div");
+  imageWrap.className = "image-preview-frame";
+  if (dataUrl) {
+    const image = document.createElement("img");
+    image.src = dataUrl;
+    image.alt = label;
+    image.loading = "lazy";
+    image.addEventListener("load", () => updateImagePairLayout(image));
+    imageWrap.append(image);
+  } else {
+    const unsupported = document.createElement("span");
+    unsupported.textContent = "Preview not supported";
+    imageWrap.append(unsupported);
+  }
+
+  const meta = document.createElement("div");
+  meta.className = "image-preview-meta";
+  meta.append(statStrong(label), statSmall(`${formatBytes(size)} · ${shortHash(hash)}`));
+
+  preview.append(imageWrap, meta);
+  return preview;
+}
+
+function renderDiffLine(line) {
+  const row = document.createElement("div");
+  row.className = "diff-row";
+  row.dataset.kind = line.kind;
+
+  const oldLine = document.createElement("span");
+  oldLine.className = "diff-line-number";
+  oldLine.textContent = line.oldLine ?? "";
+
+  const newLine = document.createElement("span");
+  newLine.className = "diff-line-number";
+  newLine.textContent = line.newLine ?? "";
+
+  const marker = document.createElement("span");
+  marker.className = "diff-marker";
+  marker.textContent = line.kind === "added" ? "+" : line.kind === "removed" ? "-" : "";
+
+  const text = document.createElement("span");
+  text.className = "diff-text";
+  text.textContent = line.text || " ";
+
+  row.append(oldLine, newLine, marker, text);
+  return row;
+}
+
+function renderDiffMessage(message) {
+  elements.diffOutput.textContent = "";
+  const empty = document.createElement("div");
+  empty.className = "diff-empty";
+  empty.textContent = message;
+  elements.diffOutput.append(empty);
+}
+
+function statStrong(value) {
+  const strong = document.createElement("strong");
+  strong.textContent = value;
+  return strong;
+}
+
+function statSmall(value) {
+  const small = document.createElement("small");
+  small.textContent = value;
+  return small;
+}
+
+function imageStat(prefix, count, label) {
+  const item = document.createElement("div");
+  item.className = "diff-stat";
+  item.dataset.kind = label === "removed" ? "removed" : label === "added" ? "added" : "modified";
+  item.append(statStrong(`${prefix}${count}`), statSmall(label));
+  return item;
+}
+
+function setDiffTabState() {
+  elements.diffTextTab.dataset.active = String(state.activeDiffTab === "text");
+  elements.diffImagesTab.dataset.active = String(state.activeDiffTab === "images");
+}
+
+function updateImagePairLayout(image) {
+  const pair = image.closest(".image-preview-pair");
+  if (!pair) return;
+  if (image.naturalHeight > image.naturalWidth) {
+    pair.dataset.layout = "stacked";
+    return;
+  }
+
+  const images = [...pair.querySelectorAll("img")];
+  const hasPortrait = images.some((item) => item.complete && item.naturalHeight > item.naturalWidth);
+  pair.dataset.layout = hasPortrait ? "stacked" : "side-by-side";
+}
+
+function formatBytes(value) {
+  if (!Number.isFinite(value)) return "unknown size";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function shortHash(value) {
+  return value ? value.slice(0, 12) : "no hash";
+}
+
+function displayMediaName(path) {
+  return path.split(/[\\/]/).pop() || path;
 }
 
 async function run(task) {
@@ -327,4 +589,11 @@ function displayPath(filePath) {
     return normalizedFile.slice(normalizedWorkspace.length + 1);
   }
   return filePath;
+}
+
+function updateUiScale() {
+  const widthScale = window.innerWidth / 1280;
+  const heightScale = window.innerHeight / 820;
+  const scale = Math.min(1.34, Math.max(0.92, Math.min(widthScale, heightScale * 1.15)));
+  document.documentElement.style.setProperty("--ui-scale", scale.toFixed(3));
 }
