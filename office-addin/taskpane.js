@@ -5,7 +5,6 @@ const elements = {
   filePath: document.querySelector("#filePathInput"),
   message: document.querySelector("#messageInput"),
   saveVersion: document.querySelector("#saveVersionBtn"),
-  status: document.querySelector("#statusBox"),
   history: document.querySelector("#historyList")
 };
 
@@ -24,7 +23,6 @@ Office.onReady(() => {
     const saved = localStorage.getItem("ovc.workspace");
     if (saved) elements.workspace.value = saved;
   }
-  setStatus("Connected to Office. Make sure the OVC desktop app is running.");
   updateSaveButtonState();
 });
 
@@ -58,7 +56,6 @@ async function saveVersion() {
   const result = await apiPost("/api/save-version", { workspace, filePath, message });
   elements.message.value = "";
   updateSaveButtonState();
-  setStatus(`Saved ${result.records.length} version(s).`);
   await loadHistory();
 }
 
@@ -67,7 +64,6 @@ async function loadHistory() {
   const filePath = elements.filePath.value.trim();
   const result = await apiPost("/api/log", { workspace, filePath });
   renderHistory(result.records);
-  setStatus(`Loaded ${result.records.length} history item(s).`);
 }
 
 function detectCurrentFile() {
@@ -81,9 +77,8 @@ function detectCurrentFile() {
       elements.workspace.value = dir;
       localStorage.setItem("ovc.workspace", dir);
     }
-    setStatus(`Detected: ${detected}`);
   } else {
-    setStatus("Could not detect a local file path. Save the document locally first.");
+    console.warn("Could not detect a local file path. Save the document locally first.");
   }
   updateSaveButtonState();
 }
@@ -123,7 +118,7 @@ async function run(task) {
   try {
     await task();
   } catch (error) {
-    setStatus(error?.message || String(error), true);
+    console.error(error?.message || String(error));
   }
 }
 
@@ -146,11 +141,6 @@ function officeUrlToPath(value) {
   }
 
   return value.replace(/^file:\/+/, "").replaceAll("/", "\\");
-}
-
-function setStatus(message, isError = false) {
-  elements.status.textContent = message;
-  elements.status.style.color = isError ? "#ffd6d1" : "#e8eefc";
 }
 
 function updateSaveButtonState() {

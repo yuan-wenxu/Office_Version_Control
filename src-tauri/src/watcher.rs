@@ -3,7 +3,7 @@ use std::{
     sync::Mutex,
 };
 
-use notify::{recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
@@ -28,7 +28,7 @@ struct WorkspaceChangePayload {
 
 impl WorkspaceWatcherState {
     pub fn watch(&self, app: AppHandle, workspace: String) -> Result<()> {
-        let workspace_path = PathBuf::from(workspace).canonicalize()?;
+        let workspace_path = PathBuf::from(&workspace);
         {
             let active = self
                 .active
@@ -48,6 +48,11 @@ impl WorkspaceWatcherState {
             let Ok(event) = result else {
                 return;
             };
+
+            // Skip pure read-access events; only react to actual file modifications
+            if matches!(event.kind, EventKind::Access(_)) {
+                return;
+            }
 
             let paths = event
                 .paths
@@ -97,5 +102,8 @@ fn is_internal_ovc_path(path: &Path) -> bool {
 }
 
 fn path_string(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
+    let s = path.to_string_lossy().into_owned();
+    // canonicalize() on Windows returns \\?\ UNC extended-length paths.
+    // Strip the prefix so emitted paths match what rfd's file dialog returns.
+    s.strip_prefix(r"\\?\").map(str::to_owned).unwrap_or(s)
 }

@@ -53,8 +53,7 @@ header p {
 }
 
 /* ── Collapsed (minimized) state ────────────────────────────────────────── */
-body.collapsed section,
-body.collapsed #statusBox {
+body.collapsed section {
   display: none;
 }
 

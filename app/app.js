@@ -1,9 +1,9 @@
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
-const FALLBACK_REFRESH_MS = 30000;
+const FALLBACK_REFRESH_MS = 5000;
 const WATCH_REFRESH_DEBOUNCE_MS = 250;
-const WATCH_SETTLED_REFRESH_MS = 1800;
+const WATCH_SETTLED_REFRESH_MS = 600;
 
 const state = {
   workspace: "",
@@ -18,6 +18,7 @@ const state = {
   watchSettledRefreshTimer: null,
   watchUnlisten: null,
   statusRefreshRunning: false,
+  statusRefreshPending: false,
   committableChanges: 0
 };
 
@@ -40,6 +41,7 @@ const elements = {
 updateUiScale();
 window.addEventListener("resize", updateUiScale, { passive: true });
 setupWorkspaceChangeListener();
+setupWindowFocusListener();
 updateCommitButtonState();
 
 elements.commitMessage.addEventListener("input", updateCommitButtonState);
@@ -172,8 +174,13 @@ document.addEventListener("visibilitychange", () => {
 
 async function refreshStatus() {
   requireWorkspace();
-  if (state.statusRefreshRunning) return;
+  if (state.statusRefreshRunning) {
+    // Another refresh is in flight — mark as pending so it reruns after completion
+    state.statusRefreshPending = true;
+    return;
+  }
   state.statusRefreshRunning = true;
+  state.statusRefreshPending = false;
   try {
     const status = await invoke("status", { workspace: state.workspace });
     state.committableChanges = (status.staged || []).length + (status.modified || []).length;
@@ -181,6 +188,10 @@ async function refreshStatus() {
     updateCommitButtonState();
   } finally {
     state.statusRefreshRunning = false;
+    if (state.statusRefreshPending) {
+      state.statusRefreshPending = false;
+      window.setTimeout(() => run(refreshStatus), 0);
+    }
   }
 }
 
@@ -605,10 +616,20 @@ async function run(task) {
 
 async function setupWorkspaceChangeListener() {
   if (state.watchUnlisten) return;
-  state.watchUnlisten = await listen("workspace-files-changed", (event) => {
-    const payload = event.payload || {};
-    if (!samePath(payload.workspace, state.workspace)) return;
+  // Only one workspace is watched at a time, so any incoming event
+  // is always for the current workspace - no path comparison needed.
+  state.watchUnlisten = await listen("workspace-files-changed", () => {
+    if (!state.workspace) return;
     scheduleWatchRefresh();
+  });
+}
+
+function setupWindowFocusListener() {
+  // tauri://focus is more reliable than visibilitychange inside a Tauri webview.
+  // When the user switches back to OVC after editing a file, this triggers an
+  // immediate status refresh instead of waiting for the fallback timer.
+  listen("tauri://focus", () => {
+    if (state.workspace) run(refreshStatus);
   });
 }
 
