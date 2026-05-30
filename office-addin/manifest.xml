@@ -5,7 +5,7 @@
   xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
   xsi:type="TaskPaneApp">
   <Id>c8e4cc1a-13dd-49be-90d9-5a8c24f4f7bb</Id>
-  <Version>2.1.0.0</Version>
+  <Version>2.1.1.0</Version>
   <ProviderName>OVC</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="OVC"/>
@@ -25,4 +25,134 @@
     <SourceLocation DefaultValue="https://localhost:38655/addin/taskpane.html"/>
   </DefaultSettings>
   <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+    xsi:type="VersionOverridesV1_0">
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.1">
+        <bt:Set Name="AddinCommands" MinVersion="1.1"/>
+      </bt:Sets>
+    </Requirements>
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <FunctionFile resid="Ovc.Commands.Url"/>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Ovc.Group">
+                <Label resid="Ovc.Group.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Ovc.Icon.32"/>
+                  <bt:Image size="32" resid="Ovc.Icon.32"/>
+                  <bt:Image size="80" resid="Ovc.Icon.64"/>
+                </Icon>
+                <Control xsi:type="Button" id="Ovc.OpenPane">
+                  <Label resid="Ovc.OpenPane.Label"/>
+                  <Supertip>
+                    <Title resid="Ovc.OpenPane.Label"/>
+                    <Description resid="Ovc.OpenPane.Desc"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Ovc.Icon.32"/>
+                    <bt:Image size="32" resid="Ovc.Icon.32"/>
+                    <bt:Image size="80" resid="Ovc.Icon.64"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Ovc.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Ovc.Taskpane.Url"/>
+                    <Title resid="Ovc.Taskpane.Title"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <FunctionFile resid="Ovc.Commands.Url"/>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Ovc.Group">
+                <Label resid="Ovc.Group.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Ovc.Icon.32"/>
+                  <bt:Image size="32" resid="Ovc.Icon.32"/>
+                  <bt:Image size="80" resid="Ovc.Icon.64"/>
+                </Icon>
+                <Control xsi:type="Button" id="Ovc.OpenPane">
+                  <Label resid="Ovc.OpenPane.Label"/>
+                  <Supertip>
+                    <Title resid="Ovc.OpenPane.Label"/>
+                    <Description resid="Ovc.OpenPane.Desc"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Ovc.Icon.32"/>
+                    <bt:Image size="32" resid="Ovc.Icon.32"/>
+                    <bt:Image size="80" resid="Ovc.Icon.64"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Ovc.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Ovc.Taskpane.Url"/>
+                    <Title resid="Ovc.Taskpane.Title"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+      <Host xsi:type="Presentation">
+        <DesktopFormFactor>
+          <FunctionFile resid="Ovc.Commands.Url"/>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Ovc.Group">
+                <Label resid="Ovc.Group.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Ovc.Icon.32"/>
+                  <bt:Image size="32" resid="Ovc.Icon.32"/>
+                  <bt:Image size="80" resid="Ovc.Icon.64"/>
+                </Icon>
+                <Control xsi:type="Button" id="Ovc.OpenPane">
+                  <Label resid="Ovc.OpenPane.Label"/>
+                  <Supertip>
+                    <Title resid="Ovc.OpenPane.Label"/>
+                    <Description resid="Ovc.OpenPane.Desc"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Ovc.Icon.32"/>
+                    <bt:Image size="32" resid="Ovc.Icon.32"/>
+                    <bt:Image size="80" resid="Ovc.Icon.64"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Ovc.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Ovc.Taskpane.Url"/>
+                    <Title resid="Ovc.Taskpane.Title"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Ovc.Icon.32" DefaultValue="https://localhost:38655/addin/assets/icon-32.png"/>
+        <bt:Image id="Ovc.Icon.64" DefaultValue="https://localhost:38655/addin/assets/icon-64.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Ovc.Commands.Url" DefaultValue="https://localhost:38655/addin/commands.html"/>
+        <bt:Url id="Ovc.Taskpane.Url" DefaultValue="https://localhost:38655/addin/taskpane.html"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Ovc.Group.Label" DefaultValue="OVC"/>
+        <bt:String id="Ovc.OpenPane.Label" DefaultValue="Open OVC"/>
+        <bt:String id="Ovc.Taskpane.Title" DefaultValue="OVC"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Ovc.OpenPane.Desc" DefaultValue="Open the OVC version control panel for this Office file."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
 </OfficeApp>

@@ -4,6 +4,7 @@ const elements = {
   workspace: document.querySelector("#workspaceInput"),
   filePath: document.querySelector("#filePathInput"),
   message: document.querySelector("#messageInput"),
+  saveVersion: document.querySelector("#saveVersionBtn"),
   status: document.querySelector("#statusBox"),
   history: document.querySelector("#historyList")
 };
@@ -24,6 +25,7 @@ Office.onReady(() => {
     if (saved) elements.workspace.value = saved;
   }
   setStatus("Connected to Office. Make sure the OVC desktop app is running.");
+  updateSaveButtonState();
 });
 
 document.querySelector("#collapseBtn").addEventListener("click", () => {
@@ -35,13 +37,19 @@ document.querySelector("#collapseBtn").addEventListener("click", () => {
 });
 
 document.querySelector("#detectBtn").addEventListener("click", detectCurrentFile);
-document.querySelector("#saveVersionBtn").addEventListener("click", () => run(saveVersion));
+elements.saveVersion.addEventListener("click", () => run(saveVersion));
 document.querySelector("#historyBtn").addEventListener("click", () => run(loadHistory));
 elements.workspace.addEventListener("change", () => {
   localStorage.setItem("ovc.workspace", elements.workspace.value.trim());
+  updateSaveButtonState();
 });
+elements.workspace.addEventListener("input", updateSaveButtonState);
+elements.filePath.addEventListener("input", updateSaveButtonState);
+elements.message.addEventListener("input", updateSaveButtonState);
+updateSaveButtonState();
 
 async function saveVersion() {
+  if (elements.saveVersion.disabled) return;
   const workspace = requireValue(elements.workspace, "Workspace folder is required.");
   const filePath = requireValue(elements.filePath, "Current Office file path is required.");
   const message = requireValue(elements.message, "Version message is required.");
@@ -49,6 +57,7 @@ async function saveVersion() {
   await apiPost("/api/init", { workspace });
   const result = await apiPost("/api/save-version", { workspace, filePath, message });
   elements.message.value = "";
+  updateSaveButtonState();
   setStatus(`Saved ${result.records.length} version(s).`);
   await loadHistory();
 }
@@ -76,6 +85,7 @@ function detectCurrentFile() {
   } else {
     setStatus("Could not detect a local file path. Save the document locally first.");
   }
+  updateSaveButtonState();
 }
 
 async function apiPost(path, body) {
@@ -141,6 +151,18 @@ function officeUrlToPath(value) {
 function setStatus(message, isError = false) {
   elements.status.textContent = message;
   elements.status.style.color = isError ? "#ffd6d1" : "#e8eefc";
+}
+
+function updateSaveButtonState() {
+  const canSave = Boolean(
+    elements.workspace.value.trim() &&
+    elements.filePath.value.trim() &&
+    elements.message.value.trim()
+  );
+  elements.saveVersion.disabled = !canSave;
+  elements.saveVersion.title = canSave
+    ? "Save this Office file as a new OVC version"
+    : "Workspace, current file, and version message are required.";
 }
 
 function escapeHtml(value) {

@@ -4,6 +4,7 @@ mod api;
 mod certs;
 mod core;
 mod office;
+mod watcher;
 
 use std::path::PathBuf;
 
@@ -13,6 +14,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
+use watcher::WorkspaceWatcherState;
 
 #[tauri::command]
 fn select_workspace(window: tauri::WebviewWindow) -> Option<String> {
@@ -130,6 +132,15 @@ fn checkout_version(
         .map_err(to_error)
 }
 
+#[tauri::command]
+fn watch_workspace(
+    app: tauri::AppHandle,
+    watcher: tauri::State<'_, WorkspaceWatcherState>,
+    workspace: String,
+) -> Result<(), String> {
+    watcher.watch(app, workspace).map_err(to_error)
+}
+
 fn main() {
     match handle_hidden_cli() {
         Ok(true) => return,
@@ -143,6 +154,7 @@ fn main() {
     api::start_background_server();
 
     tauri::Builder::default()
+        .manage(WorkspaceWatcherState::default())
         .setup(|app| {
             let show_item = MenuItem::with_id(app, "show", "显示 OVC", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "退出 OVC", true, None::<&str>)?;
@@ -203,7 +215,8 @@ fn main() {
             tracked_files,
             diff_latest,
             diff_versions,
-            checkout_version
+            checkout_version,
+            watch_workspace
         ])
         .run(tauri::generate_context!())
         .expect("failed to run OVC");

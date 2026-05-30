@@ -96,6 +96,12 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  background: #cfd6e3;
+  color: #7a8496;
+  cursor: not-allowed;
+}
+
 button.secondary {
   background: #e8ebf2;
   color: #20242c;

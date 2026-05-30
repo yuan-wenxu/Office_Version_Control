@@ -1,4 +1,9 @@
 const { invoke } = window.__TAURI__.core;
+const { listen } = window.__TAURI__.event;
+
+const FALLBACK_REFRESH_MS = 30000;
+const WATCH_REFRESH_DEBOUNCE_MS = 250;
+const WATCH_SETTLED_REFRESH_MS = 1800;
 
 const state = {
   workspace: "",
@@ -7,7 +12,13 @@ const state = {
   trackedFiles: [],
   diffHistory: [],
   latestDiff: null,
-  activeDiffTab: "text"
+  activeDiffTab: "text",
+  autoRefreshTimer: null,
+  watchRefreshTimer: null,
+  watchSettledRefreshTimer: null,
+  watchUnlisten: null,
+  statusRefreshRunning: false,
+  committableChanges: 0
 };
 
 const elements = {
@@ -15,6 +26,7 @@ const elements = {
   messageLine: document.querySelector("#messageLine"),
   statusOutput: document.querySelector("#statusOutput"),
   commitMessage: document.querySelector("#commitMessage"),
+  commitBtn: document.querySelector("#commitBtn"),
   historyList: document.querySelector("#historyList"),
   trackedFilesList: document.querySelector("#trackedFilesList"),
   diffFileLabel: document.querySelector("#diffFileLabel"),
@@ -27,6 +39,10 @@ const elements = {
 
 updateUiScale();
 window.addEventListener("resize", updateUiScale, { passive: true });
+setupWorkspaceChangeListener();
+updateCommitButtonState();
+
+elements.commitMessage.addEventListener("input", updateCommitButtonState);
 
 document.querySelector("#selectWorkspaceBtn").addEventListener("click", async () => {
   await run(async () => {
@@ -38,14 +54,18 @@ document.querySelector("#selectWorkspaceBtn").addEventListener("click", async ()
     state.trackedFiles = [];
     state.diffHistory = [];
     state.latestDiff = null;
+    state.committableChanges = 0;
+    updateCommitButtonState();
     elements.workspacePath.textContent = workspace;
     elements.diffFileLabel.textContent = "Choose a file in History.";
     renderTrackedFiles();
     renderHistory();
     renderDiffVersionOptions();
     localStorage.setItem("ovc.workspace", workspace);
+    await startWorkspaceWatch();
     await refreshStatus();
     await refreshTrackedFiles();
+    startFallbackRefresh();
     setMessage("Workspace selected.");
   });
 });
@@ -95,6 +115,7 @@ elements.diffImagesTab.addEventListener("click", () => {
 
 document.querySelector("#commitBtn").addEventListener("click", async () => {
   await run(async () => {
+    if (elements.commitBtn.disabled) return;
     requireWorkspace();
     const message = elements.commitMessage.value.trim();
     if (!message) throw new Error("Commit message is required.");
@@ -134,38 +155,62 @@ window.addEventListener("DOMContentLoaded", async () => {
   state.workspace = workspace;
   elements.workspacePath.textContent = workspace;
   await run(async () => {
+    await startWorkspaceWatch();
     await refreshStatus();
     await refreshTrackedFiles();
     renderHistory();
     renderDiffVersionOptions();
+    startFallbackRefresh();
   });
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    run(refreshStatus);
+  }
 });
 
 async function refreshStatus() {
   requireWorkspace();
-  const status = await invoke("status", { workspace: state.workspace });
-  const lines = [];
+  if (state.statusRefreshRunning) return;
+  state.statusRefreshRunning = true;
+  try {
+    const status = await invoke("status", { workspace: state.workspace });
+    state.committableChanges = (status.staged || []).length + (status.modified || []).length;
+    renderStatus(status);
+    updateCommitButtonState();
+  } finally {
+    state.statusRefreshRunning = false;
+  }
+}
 
-  if (!status.staged.length && !status.modified.length && !status.missing.length) {
-    lines.push("nothing to commit, working tree clean");
+function renderStatus(status) {
+  const modified = status.modified || [];
+  elements.statusOutput.textContent = "";
+
+  if (!modified.length) {
+    const empty = document.createElement("div");
+    empty.className = "status-empty";
+    empty.textContent = "No modified tracked files.";
+    elements.statusOutput.append(empty);
+    return;
   }
 
-  if (status.staged.length) {
-    lines.push("New files ready to commit:");
-    for (const item of status.staged) lines.push(`  staged:   ${item.sourcePath}`);
-  }
+  for (const item of modified) {
+    const button = document.createElement("button");
+    button.className = "status-item";
+    button.type = "button";
+    button.addEventListener("click", () => run(() => selectTrackedFile(item.sourcePath)));
 
-  if (status.modified.length) {
-    lines.push("Detected tracked file changes:");
-    for (const item of status.modified) lines.push(`  modified: ${item.sourcePath}`);
-  }
+    const title = document.createElement("strong");
+    title.textContent = displayPath(item.sourcePath);
 
-  if (status.missing.length) {
-    lines.push("Tracked files missing:");
-    for (const item of status.missing) lines.push(`  missing:  ${item.sourcePath}`);
-  }
+    const meta = document.createElement("small");
+    meta.textContent = `${shortHash(item.previousHash)} -> ${shortHash(item.currentHash)}`;
 
-  elements.statusOutput.textContent = lines.join("\n");
+    button.append(title, meta);
+    elements.statusOutput.append(button);
+  }
 }
 
 async function refreshTrackedFiles() {
@@ -558,6 +603,59 @@ async function run(task) {
   }
 }
 
+async function setupWorkspaceChangeListener() {
+  if (state.watchUnlisten) return;
+  state.watchUnlisten = await listen("workspace-files-changed", (event) => {
+    const payload = event.payload || {};
+    if (!samePath(payload.workspace, state.workspace)) return;
+    scheduleWatchRefresh();
+  });
+}
+
+async function startWorkspaceWatch() {
+  if (!state.workspace) return;
+  await invoke("watch_workspace", { workspace: state.workspace });
+}
+
+function scheduleWatchRefresh() {
+  if (state.watchRefreshTimer) {
+    window.clearTimeout(state.watchRefreshTimer);
+  }
+  if (state.watchSettledRefreshTimer) {
+    window.clearTimeout(state.watchSettledRefreshTimer);
+  }
+
+  state.watchRefreshTimer = window.setTimeout(() => {
+    run(refreshStatus);
+  }, WATCH_REFRESH_DEBOUNCE_MS);
+
+  state.watchSettledRefreshTimer = window.setTimeout(() => {
+    run(async () => {
+      await refreshStatus();
+      setMessage("File changes checked.");
+    });
+  }, WATCH_SETTLED_REFRESH_MS);
+}
+
+function startFallbackRefresh() {
+  if (state.autoRefreshTimer) {
+    window.clearInterval(state.autoRefreshTimer);
+  }
+  state.autoRefreshTimer = window.setInterval(() => {
+    if (!state.workspace || document.visibilityState !== "visible") return;
+    run(refreshStatus);
+  }, FALLBACK_REFRESH_MS);
+}
+
+function updateCommitButtonState() {
+  const hasMessage = elements.commitMessage.value.trim().length > 0;
+  const canCommit = Boolean(state.workspace) && state.committableChanges > 0 && hasMessage;
+  elements.commitBtn.disabled = !canCommit;
+  elements.commitBtn.title = canCommit
+    ? "Commit detected changes"
+    : "Enter a commit message after tracked files change.";
+}
+
 function requireWorkspace() {
   if (!state.workspace) throw new Error("Choose a workspace first.");
 }
@@ -591,9 +689,15 @@ function displayPath(filePath) {
   return filePath;
 }
 
+function samePath(left, right) {
+  if (!left || !right) return false;
+  return left.replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase()
+    === right.replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase();
+}
+
 function updateUiScale() {
   const widthScale = window.innerWidth / 1280;
   const heightScale = window.innerHeight / 820;
-  const scale = Math.min(1.34, Math.max(0.92, Math.min(widthScale, heightScale * 1.15)));
+  const scale = Math.min(1.5, Math.max(0.92, Math.min(widthScale, heightScale * 1.15)));
   document.documentElement.style.setProperty("--ui-scale", scale.toFixed(3));
 }

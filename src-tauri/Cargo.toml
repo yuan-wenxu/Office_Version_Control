@@ -1,6 +1,6 @@
 [package]
 name = "ovc"
-version = "2.1.0"
+version = "2.1.1"
 description = "Office file version control desktop app"
 authors = ["OVC"]
 edition = "2021"
@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 base64 = "0.22"
 flate2 = "1"
 hex = "0.4"
+notify = "8.2"
 quick-xml = "0.38"
 rcgen = "0.13.2"
 rfd = "0.15"
